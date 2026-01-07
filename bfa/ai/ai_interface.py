@@ -270,6 +270,171 @@ class MockAIInterface(AIInterface):
         """Mock API is always 'connected'."""
         return True
 
+class MockAIInterface(AIInterface):
+    """
+    Mock AI interface for testing without an actual API.
+    Provides simple rule-based decisions for agents.
+    """
+    
+    def __init__(self):
+        """Initialize the mock AI interface."""
+        # Initialize parent but don't fail if files missing
+        self.api_url = "MOCK"
+        self.timeout = 0
+        self.api_key = "MOCK"
+        self.system_message = ""
+        self.last_response = None
+        self.is_thinking = False
+    
+    def get_agent_decision(self, agent, turn, game_state):
+        """
+        Generate a mock decision for an agent.
+        - Priority 1: Attack visible enemies with clear Line of Sight (LOS).
+        - Priority 2: Move towards the enemy main target.
+        - Priority 3: Wait.
+        """
+        self.is_thinking = True
+        
+        # 1. Check for attack opportunities first
+        visible_enemies = [
+            e for e in agent.sight
+            if e.get('kind') in ['agents', 'targets'] and e.get('team') != agent.team
+        ]
+        
+        if visible_enemies:
+            # Find the closest enemy
+            closest_enemy = min(
+                visible_enemies,
+                key=lambda e: distance(agent.position, e['position'])
+            )
+            enemy_pos = closest_enemy['position']
+            
+            thoughts = f"Enemy '{closest_enemy.get('id', 'target')}' spotted at {enemy_pos}."
+            
+            # Check for a clear Line of Sight (LOS)
+            if has_line_of_sight(agent.position, enemy_pos, game_state.agents, game_state.targets, game_state.obstacles):
+                action = f"ATTACK [{enemy_pos[0]}, {enemy_pos[1]}]"
+                thoughts += " Clear line of sight. Attacking!"
+                self.is_thinking = False
+                return thoughts, action
+            else:
+                thoughts += " No clear line of sight."
+
+        # 2. No enemy with LOS, so move towards the main enemy target
+        enemy_target = next((t for t in game_state.targets if t.team != agent.team and t.is_alive()), None)
+        
+        if enemy_target:
+            possible_moves = get_possible_moves(
+                agent,
+                game_state.agents,
+                game_state.targets,
+                game_state.obstacles
+            )
+            
+            if possible_moves:
+                # Find the move that gets closest to the enemy target
+                best_move = min(
+                    possible_moves,
+                    key=lambda move: distance(move, enemy_target.position)
+                )
+                
+                thoughts = f"No enemy in my line of sight. Moving towards the enemy target at {enemy_target.position}."
+                action = f"MOVE [{best_move[0]}, {best_move[1]}]"
+                self.is_thinking = False
+                return thoughts, action
+
+        # 3. If no other action, wait
+        thoughts = "No valid moves or attacks available. Waiting."
+        action = "WAIT"
+        self.is_thinking = False
+        return thoughts, action
+    
+    def check_api_connection(self):
+        """Mock API is always 'connected'."""
+        return True
+
+class BenAI(AIInterface):
+    """
+   
+    """
+    
+    def __init__(self):
+        """Initialize the mock AI interface."""
+        # Initialize parent but don't fail if files missing
+        self.api_url = "MOCK"
+        self.timeout = 0
+        self.api_key = "MOCK"
+        self.system_message = ""
+        self.last_response = None
+        self.is_thinking = False
+    
+    def get_agent_decision(self, agent, turn, game_state):
+        """
+        Generate a mock decision for an agent.
+        - Priority 1: Attack visible enemies with clear Line of Sight (LOS).
+        - Priority 2: Move towards the enemy main target.
+        - Priority 3: Wait.
+        """
+        self.is_thinking = True
+        
+        # 1. Check for attack opportunities first
+        visible_enemies = [
+            e for e in agent.sight
+            if e.get('kind') in ['agents', 'targets'] and e.get('team') != agent.team
+        ]
+        
+        if visible_enemies:
+            # Find the closest enemy
+            closest_enemy = min(
+                visible_enemies,
+                key=lambda e: distance(agent.position, e['position'])
+            )
+            enemy_pos = closest_enemy['position']
+            
+            thoughts = f"Enemy '{closest_enemy.get('id', 'target')}' spotted at {enemy_pos}."
+            
+            # Check for a clear Line of Sight (LOS)
+            if has_line_of_sight(agent.position, enemy_pos, game_state.agents, game_state.targets, game_state.obstacles):
+                action = f"ATTACK [{enemy_pos[0]}, {enemy_pos[1]}]"
+                thoughts += " Clear line of sight. Attacking!"
+                self.is_thinking = False
+                return thoughts, action
+            else:
+                thoughts += " No clear line of sight."
+
+        # 2. No enemy with LOS, so move towards the main enemy target
+        enemy_target = next((t for t in game_state.targets if t.team != agent.team and t.is_alive()), None)
+        
+        if enemy_target:
+            possible_moves = get_possible_moves(
+                agent,
+                game_state.agents,
+                game_state.targets,
+                game_state.obstacles
+            )
+            
+            if possible_moves:
+                # Find the move that gets closest to the enemy target
+                best_move = min(
+                    possible_moves,
+                    key=lambda move: distance(move, enemy_target.position)
+                )
+                
+                thoughts = f"No enemy in my line of sight. Moving towards the enemy target at {enemy_target.position}."
+                action = f"MOVE [{best_move[0]}, {best_move[1]}]"
+                self.is_thinking = False
+                return thoughts, action
+
+        # 3. If no other action, wait
+        thoughts = "No valid moves or attacks available. Waiting."
+        action = "WAIT"
+        self.is_thinking = False
+        return thoughts, action
+    
+    def check_api_connection(self):
+        """Mock API is always 'connected'."""
+        return True
+
 
 # Example usage
 if __name__ == "__main__":
@@ -277,3 +442,4 @@ if __name__ == "__main__":
     print("Testing mock interface...")
     mock_ai = MockAIInterface()
     print(f"✓ Mock AI created (always returns valid decisions)")
+
