@@ -355,12 +355,23 @@ class MockAIInterface(AIInterface):
 
 class BenAI(AIInterface):
     """
-   
+    AI interface for grouped agents that stay together and shoot enemies.
+    
+    Strategy:
+    - Priority 1: Attack visible enemies with clear Line of Sight (LOS)
+    - Priority 2: Move to rejoin the group if separated
+    - Priority 3: Move as a group towards the enemy target
+    - Priority 4: Wait if grouped and no target visible
+    
+    Group formation: Agents stay within a proximity radius of their teammates.
     """
     
+    # Formation parameters
+    GROUP_PROXIMITY_RADIUS = 5  # Maximum distance to stay grouped
+    GROUP_CENTER_SEARCH_RADIUS = 8  # Radius to look for group center
+    
     def __init__(self):
-        """Initialize the mock AI interface."""
-        # Initialize parent but don't fail if files missing
+        """Initialize the BenAI interface."""
         self.api_url = "MOCK"
         self.timeout = 0
         self.api_key = "MOCK"
@@ -368,21 +379,89 @@ class BenAI(AIInterface):
         self.last_response = None
         self.is_thinking = False
     
+    def _get_team_agents(self, agent, game_state):
+        """
+        Get all alive teammates.
+        
+        Args:
+            agent: Current agent
+            game_state: Game state
+            
+        Returns:
+            list: List of teammate agents
+        """
+        return [a for a in game_state.agents 
+                if a.team == agent.team and a.is_alive() and a.id != agent.id]
+    
+    def _calculate_group_center(self, agent, game_state):
+        """
+        Calculate the center position of the agent's team.
+        
+        Args:
+            agent: Current agent
+            game_state: Game state
+            
+        Returns:
+            list: Average position [x, y] of all teammates
+        """
+        teammates = self._get_team_agents(agent, game_state)
+        
+        if not teammates:
+            return agent.position
+        
+        all_positions = [agent.position] + [t.position for t in teammates]
+        avg_x = sum(p[0] for p in all_positions) / len(all_positions)
+        avg_y = sum(p[1] for p in all_positions) / len(all_positions)
+        
+        return [int(avg_x), int(avg_y)]
+    
+    def _get_visible_enemies(self, agent):
+        """
+        Get all visible enemies from agent's sight.
+        
+        Args:
+            agent: Current agent
+            
+        Returns:
+            list: List of visible enemy entities
+        """
+        return [e for e in agent.sight
+                if e.get('kind') in ['agents', 'targets'] and e.get('team') != agent.team]
+    
+    def _is_grouped(self, agent, game_state):
+        """
+        Check if agent is close enough to the group center.
+        
+        Args:
+            agent: Current agent
+            game_state: Game state
+            
+        Returns:
+            bool: True if agent is within GROUP_PROXIMITY_RADIUS of group center
+        """
+        group_center = self._calculate_group_center(agent, game_state)
+        dist_to_center = distance(agent.position, group_center)
+        return dist_to_center <= self.GROUP_PROXIMITY_RADIUS
+    
     def get_agent_decision(self, agent, turn, game_state):
         """
-        Generate a mock decision for an agent.
-        - Priority 1: Attack visible enemies with clear Line of Sight (LOS).
-        - Priority 2: Move towards the enemy main target.
-        - Priority 3: Wait.
+        Generate a decision for an agent following group formation strategy.
+        
+        Args:
+            agent: Current agent
+            turn: Current turn information
+            game_state: Game state
+            
+        Returns:
+            tuple: (thoughts, action)
         """
         self.is_thinking = True
         
-        # 1. Check for attack opportunities first
-        visible_enemies = [
-            e for e in agent.sight
-            if e.get('kind') in ['agents', 'targets'] and e.get('team') != agent.team
-        ]
+        visible_enemies = self._get_visible_enemies(agent)
+        group_center = self._calculate_group_center(agent, game_state)
+        is_grouped = self._is_grouped(agent, game_state)
         
+        # PRIORITY 1: Attack visible enemies with clear Line of Sight
         if visible_enemies:
             # Find the closest enemy
             closest_enemy = min(
@@ -390,19 +469,40 @@ class BenAI(AIInterface):
                 key=lambda e: distance(agent.position, e['position'])
             )
             enemy_pos = closest_enemy['position']
-            
-            thoughts = f"Enemy '{closest_enemy.get('id', 'target')}' spotted at {enemy_pos}."
+            enemy_id = closest_enemy.get('id', 'target')
             
             # Check for a clear Line of Sight (LOS)
             if has_line_of_sight(agent.position, enemy_pos, game_state.agents, game_state.targets, game_state.obstacles):
                 action = f"ATTACK [{enemy_pos[0]}, {enemy_pos[1]}]"
-                thoughts += " Clear line of sight. Attacking!"
+                thoughts = f"Enemy '{enemy_id}' spotted! GROUPED ATTACK at {enemy_pos}!"
                 self.is_thinking = False
                 return thoughts, action
             else:
-                thoughts += " No clear line of sight."
-
-        # 2. No enemy with LOS, so move towards the main enemy target
+                # Can see enemy but no LOS - try to move to clear line of sight
+                thoughts = f"Enemy '{enemy_id}' spotted but no clear line of sight. "
+        
+        # PRIORITY 2: If not grouped, rejoin the group
+        if not is_grouped:
+            possible_moves = get_possible_moves(
+                agent,
+                game_state.agents,
+                game_state.targets,
+                game_state.obstacles
+            )
+            
+            if possible_moves:
+                # Find move that gets closest to group center
+                best_move = min(
+                    possible_moves,
+                    key=lambda move: distance(move, group_center)
+                )
+                
+                thoughts = f"Rejoining group at {group_center}. Moving to {best_move}."
+                action = f"MOVE [{best_move[0]}, {best_move[1]}]"
+                self.is_thinking = False
+                return thoughts, action
+        
+        # PRIORITY 3: Move as a group towards enemy target
         enemy_target = next((t for t in game_state.targets if t.team != agent.team and t.is_alive()), None)
         
         if enemy_target:
@@ -414,25 +514,150 @@ class BenAI(AIInterface):
             )
             
             if possible_moves:
-                # Find the move that gets closest to the enemy target
+                # Find move that both gets close to group and towards enemy
                 best_move = min(
                     possible_moves,
-                    key=lambda move: distance(move, enemy_target.position)
+                    key=lambda move: (
+                        distance(move, group_center) * 0.5 +  # Stay grouped (weight: 0.5)
+                        distance(move, enemy_target.position) * 0.5  # Move towards target (weight: 0.5)
+                    )
                 )
                 
-                thoughts = f"No enemy in my line of sight. Moving towards the enemy target at {enemy_target.position}."
+                thoughts = f"Moving with group towards enemy at {enemy_target.position}."
                 action = f"MOVE [{best_move[0]}, {best_move[1]}]"
                 self.is_thinking = False
                 return thoughts, action
-
-        # 3. If no other action, wait
-        thoughts = "No valid moves or attacks available. Waiting."
+        
+        # PRIORITY 4: Stay grouped and wait
+        thoughts = "Grouped and holding position. Waiting for enemy."
         action = "WAIT"
         self.is_thinking = False
         return thoughts, action
     
     def check_api_connection(self):
-        """Mock API is always 'connected'."""
+        """BenAI is always 'connected'."""
+        return True
+
+
+class ExplorerAI(AIInterface):
+    """
+    Aggressive team strategy:
+    All 3 agents swarm towards the nearest enemy in coordinated attack.
+    
+    Decision logic:
+    1. If enemy visible with LOS → ATTACK immediately
+    2. Else: All move towards nearest enemy (agent or base)
+    3. Stay loosely grouped while pushing forward
+    """
+    
+    def __init__(self):
+        """Initialize the ExplorerAI interface."""
+        self.api_url = "MOCK"
+        self.timeout = 0
+        self.api_key = "MOCK"
+        self.system_message = ""
+        self.last_response = None
+        self.is_thinking = False
+    
+    def _get_visible_enemies(self, agent):
+        """Get all visible enemies."""
+        return [e for e in agent.sight
+                if e.get('kind') in ['agents', 'targets'] and e.get('team') != agent.team]
+    
+    def _get_all_enemy_agents(self, agent, game_state):
+        """Get ALL enemy agents (alive)."""
+        return [a for a in game_state.agents 
+                if a.team != agent.team and a.is_alive()]
+    
+    def _get_enemy_base(self, team, game_state):
+        """Get the enemy base."""
+        return next((t for t in game_state.targets if t.team != team and t.is_alive()), None)
+    
+    def _get_nearest_enemy(self, agent, game_state):
+        """
+        Get the nearest enemy (agent or base) from agent's position.
+        Returns the closest target.
+        """
+        all_enemy_agents = self._get_all_enemy_agents(agent, game_state)
+        enemy_base = self._get_enemy_base(agent.team, game_state)
+        
+        nearest_target = None
+        nearest_dist = float('inf')
+        
+        # Check all enemy agents
+        for enemy_agent in all_enemy_agents:
+            dist = distance(agent.position, enemy_agent.position)
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest_target = enemy_agent
+        
+        # Check enemy base
+        if enemy_base:
+            dist = distance(agent.position, enemy_base.position)
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest_target = enemy_base
+        
+        return nearest_target
+    
+    def get_agent_decision(self, agent, turn, game_state):
+        """
+        Aggressive swarm strategy: All agents attack nearest enemy.
+        
+        Args:
+            agent: Current agent
+            turn: Turn information
+            game_state: Game state
+            
+        Returns:
+            tuple: (thoughts, action)
+        """
+        self.is_thinking = True
+        
+        visible_enemies = self._get_visible_enemies(agent)
+        nearest_target = self._get_nearest_enemy(agent, game_state)
+        
+        possible_moves = get_possible_moves(
+            agent, game_state.agents, game_state.targets, game_state.obstacles
+        )
+        
+        if not possible_moves:
+            thoughts = "No valid moves. Waiting."
+            action = "WAIT"
+            self.is_thinking = False
+            return thoughts, action
+        
+        # PRIORITY 1: ATTACK visible enemy with LOS
+        if visible_enemies:
+            closest_visible = min(visible_enemies, key=lambda e: distance(agent.position, e['position']))
+            enemy_pos = closest_visible['position']
+            
+            if has_line_of_sight(agent.position, enemy_pos, game_state.agents, game_state.targets, game_state.obstacles):
+                action = f"ATTACK [{enemy_pos[0]}, {enemy_pos[1]}]"
+                enemy_id = closest_visible.get('id', 'target')
+                thoughts = f"FIRE! Attacking {enemy_id} at {enemy_pos}!"
+                self.is_thinking = False
+                return thoughts, action
+        
+        # PRIORITY 2: Swarm towards nearest enemy
+        if nearest_target:
+            best_move = min(possible_moves, key=lambda m: distance(m, nearest_target.position))
+            
+            target_desc = f"{nearest_target.id}" if hasattr(nearest_target, 'id') else "enemy base"
+            target_dist = distance(agent.position, nearest_target.position)
+            thoughts = f"AGGRESSION! Charging {target_desc} ({int(target_dist)} cells away)!"
+            action = f"MOVE [{best_move[0]}, {best_move[1]}]"
+            self.is_thinking = False
+            return thoughts, action
+        
+        # Fallback
+        thoughts = "No enemies. Moving forward."
+        action = f"MOVE [{possible_moves[0][0]}, {possible_moves[0][1]}]"
+        self.is_thinking = False
+        return thoughts, action
+    
+    def check_api_connection(self):
+        """ExplorerAI is always 'connected'."""
         return True
 
 
