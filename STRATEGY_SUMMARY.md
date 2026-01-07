@@ -1,0 +1,150 @@
+# BattleField Agents - Strategic AI Implementation
+
+## Overview
+The AI system has been completely updated with a comprehensive strategic framework for turn-based grid warfare. All AI agents now follow a unified decision-making process that prioritizes team survival and coordinated offense.
+
+## Key Strategic Components Implemented
+
+### 1. **CRITICAL RULES** (Non-Negotiable)
+- ✅ NEVER attack allies (team members)
+- ✅ NEVER attack friendly target (base)
+- ✅ Only attack enemy agents and enemy target
+- ✅ Allies identified first as protected assets
+
+### 2. **PULL-UP STRATEGY** (Core Innovation)
+When an enemy attacks an ally or your base:
+1. **Immediate Priority**: Position to retaliate against the attacker
+2. **Coordination**: Focus fire with allies on the aggressor
+3. **Execution**: Move to optimal position to shoot back
+
+**Example**: Enemy shoots base at [2,3] → Move to retaliation position → ATTACK [2,3]
+
+### 3. **Decision Framework** (5-Step Process)
+1. **IDENTIFY TEAM ASSETS** - Locate allies and friendly base
+2. **THREAT ASSESSMENT** - Is team under attack?
+3. **VISIBLE ENEMIES** - What threats are in sight?
+4. **OBJECTIVE VALUE** - Can we damage enemy target?
+5. **POSITIONING** - Move for advantage or advance toward enemy base
+
+### 4. **Tactical Priorities** (Highest to Lowest)
+1. ⚡ **PULL-UP STRATEGY** - Retaliate when allies attacked
+2. 🎯 **VISIBLE ENEMY ENGAGEMENT** - Shoot enemies in sight
+3. 🏹 **LOW-HEALTH ELIMINATION** - 1-hit kills (≤25 HP)
+4. 🎪 **DESTROY ENEMY TARGET** - Attack base when safe
+5. 🗺️ **ADVANCE TOWARD ENEMY BASE** - No enemies visible = push forward
+6. 📍 **REPOSITION** - Optimize vision and tactical position
+
+### 5. **Movement Strategy**
+- **Vision Optimization**: Maximize threat visibility
+- **Advance Protocol**: Push toward enemy base systematically
+- **Retreat Safety**: Maintain distance from isolated positions
+- **Team Cohesion**: Keep line of sight to allies
+
+### 6. **Communication System**
+Agents share damage intelligence using SPEAK commands:
+```
+SPEAK [my_position] Hit enemy at [target_pos], X hits total (~Y HP left)
+```
+
+**Benefits**:
+- Tracks cumulative damage across team
+- Helps allies prioritize weakened targets
+- Enables focused fire for quick elimination
+
+### 7. **Decision Tree** (Quick Reference)
+```
+Is ally/base under attack?
+  ├─ YES → PULL-UP: Move to shoot attacker
+  └─ NO → Continue
+
+Is enemy in sight?
+  ├─ YES → ATTACK closest/weakest enemy
+  └─ NO → Continue
+
+Can you reach enemy base?
+  ├─ YES → Move toward it for vision
+  └─ NO → Reposition for better angle
+```
+
+## Response Format
+
+All AI decisions follow this format:
+
+```
+THOUGHTS: [Strategic reasoning, max 60 words]
+  - Identify allies/base visible (NEVER SHOOT)
+  - Assess active threats
+  - Choose tactical move
+  - Include threat level & HP estimates
+
+ACTION: [Single action]
+  - ATTACK [x,y]
+  - MOVE [x,y]
+  - SPEAK [x,y] message
+  - WAIT
+```
+
+## Examples in Action
+
+### PULL-UP STRATEGY
+```
+THOUGHTS: Enemy at [2,2] just attacked ally. PULL-UP priority. Moving to retaliate.
+ACTION: MOVE [1,2]
+```
+
+### VISIBLE ENGAGEMENT
+```
+THOUGHTS: Enemy at [3,4] (~75 HP, 1 prior hit). Visible threat. Engaging.
+ACTION: ATTACK [3,4]
+```
+
+### NO ENEMIES - ADVANCE
+```
+THOUGHTS: No enemies in sight. Advancing toward enemy base for vision.
+ACTION: MOVE [2,3]
+```
+
+### DAMAGE INTELLIGENCE
+```
+THOUGHTS: Hit enemy, sharing intel. Enemy now weakened for team focus.
+ACTION: SPEAK [1,2] Hit enemy at [3,3], 3 hits total (~25 HP left)
+```
+
+## Key Advantages
+
+✅ **Team Safety First**: Allies and base never targeted  
+✅ **Reactive Defense**: Immediate counterattack on aggression  
+✅ **Coordinated Offense**: Shared damage intel enables focused fire  
+✅ **Strategic Depth**: Multiple priority tiers prevent tunnel vision  
+✅ **Adaptive Movement**: Advance when safe, defend when threatened  
+✅ **Communication**: Team cohesion through information sharing  
+
+## Implementation Details
+
+- **System Message File**: [bfa/ai/system_message.txt](bfa/ai/system_message.txt) (166 lines)
+- **AI Interface**: Uses OpenAI-compatible API with system prompt injection
+- **Temperature**: 0.2 (consistent, strategic decisions)
+- **Model**: Qwen 3 30B or compatible
+
+## Testing the Strategy
+
+1. Run game with AI agents:
+   ```bash
+   python main.py --red-ai AIInterface --blue-ai AIInterface
+   ```
+
+2. Observe:
+   - Do agents protect allies?
+   - Do agents pull up when attacked?
+   - Do agents share damage intel?
+   - Do agents advance when no threats visible?
+   - Do agents focus fire on weakened targets?
+
+## Future Enhancements
+
+- [ ] Add damage history tracking per agent
+- [ ] Implement squad-based tactics
+- [ ] Add escape/retreat logic for low-health agents
+- [ ] Optimize pathfinding around obstacles
+- [ ] Add flanking maneuvers
+- [ ] Implement long-range vision planning

@@ -20,7 +20,7 @@ class AIInterface:
     Sends game state and receives agent decisions (thoughts + actions).
     """
     
-    def __init__(self, api_url="https://unpalpablely-vibronic-leonore.ngrok-free.dev/api/v1", timeout=API_TIMEOUT):
+    def __init__(self, api_url="https://openrouter.ai/api/v1/chat/completions", timeout=API_TIMEOUT):
         """
         Initialize the AI interface.
         
@@ -41,10 +41,10 @@ class AIInterface:
         
         # Load system message
         try:
-            with open('bfa/ai/system_message.txt', 'r') as f:
+            with open('bfa/ai/system_message2.txt', 'r') as f:
                 self.system_message = f.read()
         except FileNotFoundError:
-            print("Error: system_message.txt not found.")
+            print("Error: system_message2.txt not found.")
             self.system_message = "You are an AI agent playing a game."
     
     def get_agent_decision(self, agent, turn, game_state):
@@ -81,7 +81,7 @@ class AIInterface:
             }
             
             payload = {
-                "model": "qwen/qwen3-30b-a3b-2507:2", 
+                "model": "qwen/qwen3-30b-a3b-instruct-2507", 
                 "messages": [
                     {"role": "system", "content": self.system_message},
                     {"role": "user", "content": json.dumps(state)}
